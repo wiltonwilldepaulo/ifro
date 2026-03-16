@@ -11,16 +11,17 @@ ENV TZ=${TZ} \
 # Instala dependências do sistema operacional usando o gerenciador apk (Alpine)
 # --no-cache evita armazenar cache local, reduzindo o tamanho da imagem final
 RUN apk add --no-cache \
-    bash \           
-    git \                
-    unzip \              
-    icu-dev \            
-    postgresql-dev \     
-    oniguruma-dev \      
-    tzdata               
+    bash \
+    git \
+    unzip \
+    icu-dev \
+    postgresql-dev \
+    oniguruma-dev \
+    tzdata
 
 # Compila e instala extensões PHP nativas necessárias para a aplicação
-RUN apk add --no-cache \
+# PCOV instalado via pecl para cobertura de código nos testes (sem ext-uopz)
+RUN apk add --no-cache $PHPIZE_DEPS \
     freetype-dev \
     libjpeg-turbo-dev \
     libpng-dev \
@@ -32,7 +33,9 @@ RUN apk add --no-cache \
     pdo_pgsql \
     intl \
     mbstring \
-    gd
+    gd \
+    && pecl install pcov \
+    && docker-php-ext-enable pcov
 
 # Copia o arquivo de configuração customizado do PHP para o container
 # Ele será carregado automaticamente pelo PHP
@@ -45,18 +48,6 @@ COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 # Define o diretório de trabalho padrão dentro do container
 # Todos os comandos seguintes serão executados a partir desse diretório
 WORKDIR /var/www
-
-# Copia apenas os arquivos do Composer primeiro
-# Isso permite melhor aproveitamento de cache de camadas do Docker
-COPY composer.json composer.lock ./
-
-# Instala as dependências PHP do projeto usando o Composer
-RUN composer install \
-    --no-dev \                    
-    --optimize-autoloader \       
-    --classmap-authoritative \    
-    --no-interaction \            
-    --no-progress                 
 
 # Copia todo o código da aplicação para dentro do container
 COPY . .

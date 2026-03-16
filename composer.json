@@ -2,35 +2,33 @@
     "name": "root/nginx",
     "autoload": {
         "psr-4": {
-            "app\\": "app/"
+            "App\\": "app/"
         }
     },
-    "authors": [
-        {
-            "name": "WILTON WILL DE PAULO",
-            "email": "wiltonwilldepaulo@gmail.com"
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
         }
-    ],
-    "require-dev": {
-        "pestphp/pest": "^4.0",
-        "pestphp/pest-plugin-arch": "^3.0",
-        "phpstan/phpstan": "^2.0",
-        "phpstan/phpstan-phpunit": "^2.0",
-        "phpstan/phpstan-deprecation-rules": "^1.0",
-        "pcov/clobber": "^1.0",
-        "mockery/mockery": "^1.6",
-        "fakerphp/faker": "^1.23",
-        "laravel/pint": "^1.0"
     },
     "require": {
         "slim/slim": "^4.15",
         "slim/psr7": "^1.7",
         "slim/twig-view": "^3.4"
     },
+    "require-dev": {
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-arch": "^4.0",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "mockery/mockery": "^1.6",
+        "fakerphp/faker": "^1.23",
+        "laravel/pint": "^1.0"
+    },
     "scripts": {
         "test": "pest",
         "test:cov": "pest --coverage --min=80",
-        "test:html": "pest --coverage-html coverage/",
+        "test:html": "pest --coverage-html storage/coverage/",
         "analyse": "phpstan analyse",
         "format": "pint",
         "format:check": "pint --test",
