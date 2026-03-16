@@ -28,7 +28,7 @@ services:
 
   # Serviço do PHP, responsável por executar a aplicação
   php:
-    #Define esse mesmo diretório como o ponto de execução padrão dentro do container, garantindo 
+    #Define esse mesmo diretório como o ponto de execução padrão dentro do container, garantindo
     #que comandos como o Composer sejam executados no contexto correto do projeto, onde estão
     working_dir: /var/www
     # Define que a imagem será construída a partir de um Dockerfile
@@ -41,6 +41,10 @@ services:
     # Nome fixo do container PHP
     container_name: app_php
 
+    # Permite que o container acesse o VSCode no host para debug via Xdebug
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     #Permitindo que qualquer alteração feita no código no VS Code seja imediatamente refletida no ambiente Docker
     volumes:
       - ./:/var/www/
@@ -49,11 +53,13 @@ services:
       sh -c "composer install --no-interaction &&
              composer dump-autoload -o &&
              php-fpm"
-             
+
     # Variáveis de ambiente do container
     environment:
       # Define o fuso horário do container
       TZ: ${TZ}
+      # Se APP_DEBUG tem valor no .env → XDEBUG_MODE=debug (ativo); se vazio → usa "off" do php.ini
+      XDEBUG_MODE: ${APP_DEBUG:+debug}
 
     # Conecta o container à rede interna do projeto
     networks:
@@ -87,7 +93,8 @@ services:
     # Conecta o container à rede interna do projeto
     networks:
       - app_network
-    # Definição das redes do projeto
+
+# Definição das redes do projeto
 networks:
   # Rede bridge interna para comunicação entre os containers
   app_network:
