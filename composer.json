@@ -4,18 +4,45 @@
         "psr-4": {
             "app\\": "app/"
         }
-    }, 
+    },
     "authors": [
         {
             "name": "WILTON WILL DE PAULO",
             "email": "wiltonwilldepaulo@gmail.com"
         }
     ],
+    "require-dev": {
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-arch": "^3.0",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan-deprecation-rules": "^1.0",
+        "pcov/clobber": "^1.0",
+        "mockery/mockery": "^1.6",
+        "fakerphp/faker": "^1.23",
+        "laravel/pint": "^1.0"
+    },
     "require": {
         "slim/slim": "^4.15",
         "slim/psr7": "^1.7",
-        "slim/twig-view": "^3.4",
-        "robmorgan/phinx": "^0.16.10",
-        "dompdf/dompdf": "^3.1"
+        "slim/twig-view": "^3.4"
+    },
+    "scripts": {
+        "test": "pest",
+        "test:cov": "pest --coverage --min=80",
+        "test:html": "pest --coverage-html coverage/",
+        "analyse": "phpstan analyse",
+        "format": "pint",
+        "format:check": "pint --test",
+        "ci": [
+            "@format:check",
+            "@analyse",
+            "@test:cov"
+        ]
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
     }
 }

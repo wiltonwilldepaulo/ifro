@@ -2,7 +2,7 @@ services:
   # Serviço do Nginx, responsável por receber as requisições HTTP
   nginx:
     # Imagem oficial do Nginx, baseada em Alpine Linux
-    image: nginx:1.29.5-alpine3.23-perl
+    image: nginx:1.29.6-alpine3.23-perl
 
     # Nome fixo do container para facilitar identificação e debug
     container_name: app_nginx
@@ -45,7 +45,7 @@ services:
     volumes:
       - ./:/var/www/
 
-    command: >
+    command: >+
       sh -c "composer install --no-interaction &&
              composer dump-autoload -o &&
              php-fpm"
@@ -53,7 +53,7 @@ services:
     # Variáveis de ambiente do container
     environment:
       # Define o fuso horário do container
-      TZ: America/Sao_Paulo
+      TZ: ${TZ}
 
     # Conecta o container à rede interna do projeto
     networks:
@@ -83,11 +83,10 @@ services:
       # Script SQL executado automaticamente na primeira inicialização
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "5432:5432"
+      - "${DB_PORT}:${DB_PORT}"
     # Conecta o container à rede interna do projeto
     networks:
       - app_network
-
     # Definição das redes do projeto
 networks:
   # Rede bridge interna para comunicação entre os containers

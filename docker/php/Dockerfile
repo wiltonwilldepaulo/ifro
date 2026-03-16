@@ -5,7 +5,7 @@ FROM php:8.5.2-fpm-alpine3.23
 # Define variáveis de ambiente globais do container
 # TZ ajusta o fuso horário
 # COMPOSER_ALLOW_SUPERUSER permite executar o Composer como root dentro do container
-ENV TZ=America/Sao_Paulo \
+ENV TZ=${TZ} \
     COMPOSER_ALLOW_SUPERUSER=1
 
 # Instala dependências do sistema operacional usando o gerenciador apk (Alpine)
