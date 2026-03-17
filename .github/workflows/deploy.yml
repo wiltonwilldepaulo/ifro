@@ -1,0 +1,298 @@
+name: "CI/CD — Testes & Deploy"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  SERVER_HOST: "82.25.74.36"
+  SERVER_USER: "root"
+  DEPLOY_PATH: "/home/ifro"
+  PHP_VERSION: "8.5"
+
+# ─────────────────────────────────────────────
+# Garante que apenas 1 deploy roda por vez.
+# Se um novo push chegar enquanto o anterior
+# ainda está rodando, o anterior é cancelado.
+# ─────────────────────────────────────────────
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ═══════════════════════════════════════════
+  # JOB 1: QUALIDADE DE CÓDIGO (PHPStan)
+  # ═══════════════════════════════════════════
+  code-quality:
+    name: "Análise estática (PHPStan)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Setup PHP ${{ env.PHP_VERSION }}"
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo_pgsql, pgsql, mbstring, zip, gd, intl, bcmath, curl
+          coverage: none
+          tools: composer:v2
+
+      - name: "Cache do Composer"
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: "Instalar dependências"
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: "PHPStan"
+        run: vendor/bin/phpstan analyse --error-format=github
+
+  # ═══════════════════════════════════════════
+  # JOB 2: TESTES AUTOMATIZADOS
+  # ═══════════════════════════════════════════
+  tests:
+    name: "Testes (${{ matrix.suite }})"
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    # ─── PostgreSQL como service container ───
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U test_user -d test_db"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    # ─── Rodar cada suite de teste em paralelo ───
+    strategy:
+      fail-fast: true
+      matrix:
+        suite:
+          - unit
+          - feature
+          - integration
+          - architecture
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Setup PHP ${{ env.PHP_VERSION }}"
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo_pgsql, pgsql, mbstring, zip, gd, intl, bcmath, curl
+          coverage: xdebug
+          tools: composer:v2
+
+      - name: "Cache do Composer"
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: "Instalar dependências"
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: "Preparar .env de teste"
+        run: |
+          cp .env .env.backup 2>/dev/null || true
+          cat > .env.testing << 'EOF'
+          APP_ENV=testing
+          APP_DEBUG=true
+          DB_HOST=127.0.0.1
+          DB_PORT=5432
+          DB_NAME=test_db
+          DB_USER=test_user
+          DB_PASSWORD=test_password
+          EOF
+
+      - name: "Executar migrations (Phinx)"
+        run: vendor/bin/phinx migrate -e testing
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: development_db
+          DB_USER: ifro
+          DB_PASSWORD: ifro
+
+      - name: "Executar testes — ${{ matrix.suite }}"
+        run: |
+          vendor/bin/pest \
+            --testsuite=${{ matrix.suite }} \
+            --colors=always \
+            --log-junit=reports/junit-${{ matrix.suite }}.xml \
+            --coverage-clover=reports/coverage-${{ matrix.suite }}.xml
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_NAME: development_db
+          DB_USER: ifro
+          DB_PASSWORD: ifro
+
+      - name: "Upload relatório de testes"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.suite }}
+          path: reports/
+          retention-days: 7
+
+  # ═══════════════════════════════════════════
+  # JOB 3: DEPLOY (só roda se TUDO passar)
+  # ═══════════════════════════════════════════
+  deploy:
+    name: "Deploy para VPS"
+    runs-on: ubuntu-latest
+    needs: [code-quality, tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    environment:
+      name: production
+      url: "http://${{ env.SERVER_HOST }}"
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Copiar arquivos para VPS"
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "."
+          target: ${{ env.DEPLOY_PATH }}
+          overwrite: true
+
+      - name: "Build e restart Docker"
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+
+            # Corrigir line endings (substitui dos2unix)
+            find . -type f \( -name "*.sh" -o -name "*.conf" -o -name "*.yml" -o -name "*.ini" -o -name "Dockerfile*" \) \
+              -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+
+            # Build das imagens Docker
+            echo "══ Build das imagens ══"
+            docker compose build --pull --quiet
+
+            # Parar containers antigos
+            echo "══ Parando containers antigos ══"
+            docker compose down --timeout 30 2>/dev/null || true
+
+            # Subir novos containers
+            echo "══ Subindo containers ══"
+            docker compose up -d --remove-orphans
+
+            # Aguardar containers saudáveis
+            echo "══ Aguardando containers ══"
+            RETRIES=0
+            until docker compose exec -T php php -v &>/dev/null; do
+              RETRIES=$((RETRIES + 1))
+              if [ $RETRIES -ge 30 ]; then
+                echo "ERRO: PHP não iniciou"
+                docker compose logs php --tail=20
+                exit 1
+              fi
+              sleep 1
+            done
+
+            # Instalar dependências de produção
+            echo "══ Composer install ══"
+            docker compose exec -T php composer install \
+              --no-dev \
+              --optimize-autoloader \
+              --no-interaction \
+              --working-dir=/var/www/html
+
+            # Executar migrations de produção (Phinx)
+            echo "══ Migrations ══"
+            docker compose exec -T php vendor/bin/phinx migrate -e production
+
+            echo "══ Deploy concluído! ══"
+            docker compose ps
+
+      - name: "Health check"
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.SERVER_HOST }}
+          username: ${{ env.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+            sleep 8
+            cd ${{ env.DEPLOY_PATH }}
+
+            # Verificar containers
+            RUNNING=$(docker compose ps --status running --format json | wc -l)
+            echo "Containers rodando: $RUNNING"
+
+            if [ "$RUNNING" -lt 3 ]; then
+              echo "ERRO: containers insuficientes!"
+              docker compose ps
+              docker compose logs --tail=30
+              exit 1
+            fi
+
+            # Teste HTTP
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost || echo "000")
+            echo "HTTP status: $HTTP_CODE"
+
+            if [ "$HTTP_CODE" -ge 500 ]; then
+              echo "ERRO: servidor retornou $HTTP_CODE"
+              docker compose logs --tail=20
+              exit 1
+            fi
+
+            echo "Health check OK!"
+
+  # ═══════════════════════════════════════════
+  # JOB 4: NOTIFICAÇÃO (sempre executa)
+  # ═══════════════════════════════════════════
+  notify:
+    name: "Notificação"
+    runs-on: ubuntu-latest
+    needs: [code-quality, tests, deploy]
+    if: always()
+
+    steps:
+      - name: "Resumo do pipeline"
+        run: |
+          echo "## Resultado do Pipeline" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Etapa | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| PHPStan | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Testes | ${{ needs.tests.result == 'success' && '✅' || '❌' }} ${{ needs.tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy | ${{ needs.deploy.result == 'success' && '✅' || needs.deploy.result == 'skipped' && '⏭️' || '❌' }} ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Autor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
