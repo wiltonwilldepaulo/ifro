@@ -4,7 +4,7 @@ parameters:
         - App
     phpVersion: 80500
     tmpDir: storage/phpstan
-    bootstrapFiles:
+    scanFiles:
         - App/helpers/settings.php (?)
     excludePaths:
         - vendor
