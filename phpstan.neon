@@ -6,4 +6,4 @@ parameters:
     tmpDir: storage/phpstan
     excludePaths:
         - vendor
-        - App/routes
+        - App/routes (?)
