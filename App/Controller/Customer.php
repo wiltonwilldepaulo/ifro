@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+
 final class Customer extends Base
 {
     public function list($request, $response)
