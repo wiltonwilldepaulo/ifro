@@ -215,10 +215,9 @@ jobs:
               --no-dev \
               --optimize-autoloader \
               --no-interaction \
-              --working-dir=/var/www/html
+              --working-dir=/var/www
 
             echo "══ Migrations ══"
-            docker compose exec -T php vendor/bin/phinx migrate -e production
 
             echo "══ Deploy concluído! ══"
             docker compose ps
