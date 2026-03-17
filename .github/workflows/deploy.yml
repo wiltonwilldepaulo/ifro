@@ -127,8 +127,6 @@ jobs:
           DB_PASSWORD=${DB_PASSWORD}
           EOF
 
-      - name: "Executar migrations (Phinx)"
-        run: vendor/bin/phinx migrate -e testing
 
       - name: "Executar testes — ${{ matrix.suite }}"
         run: |
