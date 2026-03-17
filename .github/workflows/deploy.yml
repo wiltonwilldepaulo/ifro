@@ -64,7 +64,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18.3-alpine3.23
         env:
           POSTGRES_DB: ${{ vars.DB_NAME_TEST || 'test_db' }}
           POSTGRES_USER: ${{ vars.DB_USER_TEST || 'test_user' }}
