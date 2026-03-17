@@ -5,7 +5,7 @@ parameters:
     phpVersion: 80500
     tmpDir: storage/phpstan
     bootstrapFiles:
-        - App/helpers/settings.php
+        - App/helpers/settings.php (?)
     excludePaths:
         - vendor
         - App/routes (?)
