@@ -1,9 +1,9 @@
 parameters:
     level: 5
     paths:
-        - app
+        - App
     phpVersion: 80400
     tmpDir: storage/phpstan
     excludePaths:
         - vendor
-        - app/routes
+        - App/routes
