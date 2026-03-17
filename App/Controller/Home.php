@@ -1,9 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controller;
 
 
-class Home extends Base
+final class Home extends Base
 {
     public function home($request, $response)
     {

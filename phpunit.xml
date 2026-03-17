@@ -1,14 +1,17 @@
 <!-- phpunit.xml — na raiz do projeto -->
 <phpunit bootstrap="vendor/autoload.php" colors="true">
   <testsuites>
+    <testsuite name="Architecture">
+      <directory suffix="Test.php">tests/Architecture</directory>
+    </testsuite>
     <testsuite name="Unit">
-      <directory>tests/Unit</directory>
+      <directory suffix="Test.php">tests/Unit</directory>
     </testsuite>
     <testsuite name="Integration">
-      <directory>tests/Integration</directory>
+      <directory suffix="Test.php">tests/Integration</directory>
     </testsuite>
     <testsuite name="Feature">
-      <directory>tests/Feature</directory>
+      <directory suffix="Test.php">tests/Feature</directory>
     </testsuite>
   </testsuites>
   <source>
@@ -16,10 +19,4 @@
       <directory suffix=".php">app</directory>
     </include>
   </source>
-  <coverage>
-    <report>
-      <html outputDirectory="storage/coverage"/>
-      <clover outputFile="storage/coverage/clover.xml"/>
-    </report>
-  </coverage>
 </phpunit>

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Database\Builder;
 
 use App\Database\Connection;
@@ -14,7 +16,7 @@ class InsertQuery
             $self = new self;
             $self->table = $table;
             return $self;
-        /** @phpstan-ignore catch.neverThrown */
+            /** @phpstan-ignore catch.neverThrown */
         } catch (\Throwable $e) {
             throw new \Throwable("Restrição: " . $e->getMessage(), 1);
         }
