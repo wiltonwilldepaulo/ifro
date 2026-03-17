@@ -14,11 +14,12 @@ class InsertQuery
             $self = new self;
             $self->table = $table;
             return $self;
-        } catch (\Exception $e) {
-            throw new \Exception("Restrição: " . $e->getMessage(), 1);
+        /** @phpstan-ignore catch.neverThrown */
+        } catch (\Throwable $e) {
+            throw new \Throwable("Restrição: " . $e->getMessage(), 1);
         }
     }
-    private function createQuery(): ?string
+    private function createQuery(): string
     {
         if (!$this->table) {
             throw new \Exception("A consulta precisa invocar o método insert.");

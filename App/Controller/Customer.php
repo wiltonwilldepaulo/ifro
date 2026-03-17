@@ -37,11 +37,11 @@ class Customer extends Base
     {
         $form = $request->getParsedBody();
         $FieldsAndValues = [
-            'nome_fantasia' => $form['nomeExibicao'] ?? null,
-            'sobrenome_razao' => $form['nomeLegal'] ?? null,
-            'cpf_cnpj' => $form['numeroDocumento'] ?? null,
-            'inscricao_estadual' => $form['registroSecundario'] ?? null,
-            'nascimento_fundacao' => $this->convertBrDateToDatabaseFormat($form['dataRegistro']) ?? null,
+            'nome_fantasia' => $form['nomeExibicao'],
+            'sobrenome_razao' => $form['nomeLegal'] ?? '',
+            'cpf_cnpj' => $form['numeroDocumento'] ?? '',
+            'inscricao_estadual' => $form['registroSecundario'] ?? '',
+            'nascimento_fundacao' => $this->convertBrDateToDatabaseFormat($form['dataRegistro']),
             'ativo' => ($form['ativo'] === 'true') ? true : false
         ];
         try {
@@ -68,7 +68,7 @@ class Customer extends Base
             'sobrenome_razao' => $form['nomeLegal'] ?? null,
             'cpf_cnpj' => $form['numeroDocumento'] ?? null,
             'inscricao_estadual' => $form['registroSecundario'] ?? null,
-            'nascimento_fundacao' => $this->convertBrDateToDatabaseFormat($form['dataRegistro']) ?? null,
+            'nascimento_fundacao' => $this->convertBrDateToDatabaseFormat($form['dataRegistro']),
             'ativo' => ($form['ativo'] === 'true') ? true : false
         ];
         try {
@@ -104,9 +104,9 @@ class Customer extends Base
         #Captura o termo da pesquisa 
         $term = $form['search']['value'] ?? null;
         #Captura o valor do registro inicial
-        $start = (int)$form['start'] ?? 0;
+        $start = (int)$form['start'];
         #Captura o valor do registro final
-        $length = (int)$form['length'] ?? 10;
+        $length = (int)$form['length'];
         $columns = [
             0 => 'id',
             1 => 'nome_fantasia',
@@ -171,7 +171,7 @@ class Customer extends Base
             }
 
             $data = [
-                'recordsTotal' => count($customers) ?? 0,
+                'recordsTotal' => count($customers),
                 'recordsFiltered' => $queryCount['qtd'] ?? 0,
                 'data' => $customer
             ];

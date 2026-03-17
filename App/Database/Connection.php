@@ -36,12 +36,11 @@ class Connection
         #Tentativa de estabelecer uma conexão com o banco de dados com tratamento de exceções.
         try {
             #Caso já exista a conexão com banco de dados retornamos a conexão.
-            if (static::$pdo) {
-                return static::$pdo;
+            if (self::$pdo) {
+                return self::$pdo;
             }
             #Ajuste o caminho para a raiz do seu projeto
-            static::loadEnv(__DIR__ . '/../../.env');
-
+            self::loadEnv(__DIR__ . '/../../.env');
             # Definindo as opções para a conexão PDO.
             $options = [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, # Lança exceções em caso de erros.
@@ -51,7 +50,7 @@ class Connection
                 PDO::ATTR_STRINGIFY_FETCHES => false, # Desativa a conversão de valores numéricos para strings.
             ];
             # Criação da nova conexão PDO com os parâmetros do banco de dados.
-            static::$pdo = new PDO(
+            self::$pdo = new PDO(
                 sprintf(
                     '%s:host=%s;port=%s;dbname=%s',
                     $_ENV['DB_CONNECTION'],
@@ -63,9 +62,9 @@ class Connection
                 $_ENV['DB_PASSWORD'],
                 $options # Opções para a conexão PDO.
             );
-            static::$pdo->exec("SET NAMES 'utf8'");
+            self::$pdo->exec("SET NAMES 'utf8'");
             #Caso seja bem-sucedida a conexão retornamos a variável $pdo;
-            return static::$pdo;
+            return self::$pdo;
         } catch (\PDOException $e) {
             throw new \PDOException("Erro: " . $e->getMessage(), 1);
         }

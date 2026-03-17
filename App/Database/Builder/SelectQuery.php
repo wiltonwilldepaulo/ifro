@@ -17,51 +17,14 @@ class SelectQuery
     private array $join = [];
     private array $binds = [];
     private string $limits;
-    public static function execSQL(string $sql, $fetchAll = true)
-    {
-        $self = new self;
-        try {
-            $connection = Connection::connection();
-            $query = $connection->query($sql);
-            $resp = $query->execute();
-            if ($fetchAll) {
-                return $fetchAll ? $query->fetchAll() : $query->fetch();
-            } else {
-                return $resp;
-            }
-        } catch (\PDOException $e) {
-            throw new \Exception("Restrição: {$e->getMessage()}");
-        }
-    }
-    public static function run(string $sql, $fetchAll = true, $returning = false)
-    {
-        $self = new self;
-        try {
-            $connection = Connection::connection();
-            $query = $connection->prepare($sql);
-            $query->execute();
 
-            // Se a query tem RETURNING, busca o resultado
-            if ($returning || stripos($sql, 'RETURNING') !== false) {
-                return $query->fetch(\PDO::FETCH_ASSOC);
-            }
-
-            if ($fetchAll) {
-                return $query->fetchAll(\PDO::FETCH_ASSOC);
-            } else {
-                return $query->rowCount(); // Número de linhas afetadas
-            }
-        } catch (\PDOException $e) {
-            throw new \Exception("Restrição: {$e->getMessage()}");
-        }
-    }
     public static function select(string $fields = '*'): ?self
     {
         $self = new self;
         $self->fields = $fields;
         return $self;
     }
-    public function from(string $table): ?self
+    public function from(string $table): self
     {
         $this->table = $table;
         return $this;
