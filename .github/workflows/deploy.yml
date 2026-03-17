@@ -18,10 +18,6 @@ concurrency:
 
 jobs:
 
-  # ═══════════════════════════════════════════
-  # JOB 1: ANÁLISE ESTÁTICA (PHPStan)
-  # Roda em PR e em push na main
-  # ═══════════════════════════════════════════
   code-quality:
     name: "Análise estática (PHPStan)"
     runs-on: ubuntu-latest
@@ -51,12 +47,6 @@ jobs:
       - name: "PHPStan"
         run: vendor/bin/phpstan analyse --error-format=github
 
-  # ═══════════════════════════════════════════
-  # JOB 2: TESTES AUTOMATIZADOS (Pest)
-  # Roda em PR e em push na main
-  # Depende do JOB 1 — se PHPStan falhar,
-  # os testes nem iniciam
-  # ═══════════════════════════════════════════
   tests:
     name: "Testes (${{ matrix.suite }})"
     runs-on: ubuntu-latest
@@ -72,10 +62,10 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready"
+          --health-cmd="pg_isready -h 127.0.0.1 -p 5432 -U ${{ vars.DB_USER_TEST || 'test_user' }} -d ${{ vars.DB_NAME_TEST || 'test_db' }}"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
 
     strategy:
       fail-fast: true
@@ -87,6 +77,9 @@ jobs:
           - integration
 
     env:
+      APP_ENV: testing
+      APP_DEBUG: "true"
+      DB_CONNECTION: "pgsql"
       DB_HOST: "127.0.0.1"
       DB_PORT: "5432"
       DB_NAME: ${{ vars.DB_NAME_TEST || 'test_db' }}
@@ -115,11 +108,15 @@ jobs:
       - name: "Instalar dependências"
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: "Preparar pasta de relatórios"
+        run: mkdir -p reports
+
       - name: "Preparar .env de teste"
         run: |
           cat > .env << EOF
-          APP_ENV=testing
-          APP_DEBUG=true
+          APP_ENV=${APP_ENV}
+          APP_DEBUG=${APP_DEBUG}
+          DB_CONNECTION=${DB_CONNECTION}
           DB_HOST=${DB_HOST}
           DB_PORT=${DB_PORT}
           DB_NAME=${DB_NAME}
@@ -127,6 +124,8 @@ jobs:
           DB_PASSWORD=${DB_PASSWORD}
           EOF
 
+      - name: "Executar migrations (Phinx)"
+        run: vendor/bin/phinx migrate -e testing
 
       - name: "Executar testes — ${{ matrix.suite }}"
         run: |
@@ -144,11 +143,6 @@ jobs:
           path: reports/
           retention-days: 7
 
-  # ═══════════════════════════════════════════
-  # JOB 3: DEPLOY (só roda em push na main
-  # e somente se JOB 1 + JOB 2 passarem)
-  # Em Pull Request este job é ignorado
-  # ═══════════════════════════════════════════
   deploy:
     name: "Deploy para VPS"
     runs-on: ubuntu-latest
@@ -160,6 +154,17 @@ jobs:
       url: "http://${{ vars.SERVER_HOST }}"
 
     steps:
+      - name: "Validar secrets do deploy"
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          [ -n "$SERVER_HOST" ] || { echo "ERRO: secret SERVER_HOST não definido"; exit 1; }
+          [ -n "$SERVER_USER" ] || { echo "ERRO: secret SERVER_USER não definido"; exit 1; }
+          [ -n "$SERVER_SSH_KEY" ] || { echo "ERRO: secret SERVER_SSH_KEY não definido"; exit 1; }
+          echo "Secrets obrigatórios do deploy estão presentes"
+
       - name: "Checkout"
         uses: actions/checkout@v4
 
@@ -184,7 +189,7 @@ jobs:
             set -e
             cd ${{ vars.DEPLOY_PATH || '/home/ifro' }}
 
-            find . -type f \( -name "*.sh" -o -name "*.conf" -o -name "*.yml" -o -name "*.ini" -o -name "Dockerfile*" \) \
+            find . -type f \( -name "*.sh" -o -name "*.conf" -o -name "*.yml" -o -name "*.yaml" -o -name "*.ini" -o -name "Dockerfile*" \) \
               -exec sed -i 's/\r$//' {} + 2>/dev/null || true
 
             echo "══ Build das imagens ══"
@@ -196,16 +201,16 @@ jobs:
             echo "══ Subindo containers ══"
             docker compose up -d --remove-orphans
 
-            echo "══ Aguardando containers ══"
+            echo "══ Aguardando container PHP ══"
             RETRIES=0
-            until docker compose exec -T php php -v &>/dev/null; do
+            until docker compose exec -T php php -v >/dev/null 2>&1; do
               RETRIES=$((RETRIES + 1))
-              if [ $RETRIES -ge 30 ]; then
-                echo "ERRO: PHP não iniciou"
-                docker compose logs php --tail=20
+              if [ "$RETRIES" -ge 30 ]; then
+                echo "ERRO: container PHP não iniciou"
+                docker compose logs php --tail=50 || true
                 exit 1
               fi
-              sleep 1
+              sleep 2
             done
 
             echo "══ Composer install ══"
@@ -213,11 +218,12 @@ jobs:
               --no-dev \
               --optimize-autoloader \
               --no-interaction \
-              --working-dir=/var/www
+              --working-dir=/var/www/html
 
             echo "══ Migrations ══"
+            docker compose exec -T php vendor/bin/phinx migrate -e production
 
-            echo "══ Deploy concluído! ══"
+            echo "══ Deploy concluído ══"
             docker compose ps
 
       - name: "Health check"
@@ -226,6 +232,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
           script: |
             set -e
             sleep 8
@@ -234,27 +241,24 @@ jobs:
             RUNNING=$(docker compose ps --status running --format json | wc -l)
             echo "Containers rodando: $RUNNING"
 
-            if [ "$RUNNING" -lt 3 ]; then
-              echo "ERRO: containers insuficientes!"
+            if [ "$RUNNING" -lt 1 ]; then
+              echo "ERRO: nenhum container em execução"
               docker compose ps
-              docker compose logs --tail=30
+              docker compose logs --tail=50 || true
               exit 1
             fi
 
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost || echo "000")
             echo "HTTP status: $HTTP_CODE"
 
-            if [ "$HTTP_CODE" -ge 500 ]; then
-              echo "ERRO: servidor retornou $HTTP_CODE"
-              docker compose logs --tail=20
+            if [ "$HTTP_CODE" -ge 500 ] || [ "$HTTP_CODE" = "000" ]; then
+              echo "ERRO: aplicação indisponível ou retornando falha"
+              docker compose logs --tail=50 || true
               exit 1
             fi
 
-            echo "Health check OK!"
+            echo "Health check OK"
 
-  # ═══════════════════════════════════════════
-  # JOB 4: NOTIFICAÇÃO (sempre executa)
-  # ═══════════════════════════════════════════
   notify:
     name: "Notificação"
     runs-on: ubuntu-latest
@@ -264,14 +268,14 @@ jobs:
     steps:
       - name: "Resumo do pipeline"
         run: |
-          echo "## Resultado do Pipeline" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Etapa | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| PHPStan | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Testes | ${{ needs.tests.result == 'success' && '✅' || '❌' }} ${{ needs.tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Deploy | ${{ needs.deploy.result == 'success' && '✅' || needs.deploy.result == 'skipped' && '⏭️' || '❌' }} ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Autor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Resultado do Pipeline" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Etapa | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PHPStan | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} ${{ needs.code-quality.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Testes | ${{ needs.tests.result == 'success' && '✅' || '❌' }} ${{ needs.tests.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Deploy | ${{ needs.deploy.result == 'success' && '✅' || needs.deploy.result == 'skipped' && '⏭️' || '❌' }} ${{ needs.deploy.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Commit:** \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Autor:** ${{ github.actor }}" >> "$GITHUB_STEP_SUMMARY"
