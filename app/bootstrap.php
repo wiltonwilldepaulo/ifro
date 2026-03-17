@@ -4,11 +4,15 @@ use Slim\Factory\AppFactory;
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// Carrega as variáveis do .env
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
+$dotenv->load();
+
 $app = AppFactory::create();
 
 $app->addRoutingMiddleware();
 
-$debug = (getenv('APP_DEBUG') ?: ($_ENV['APP_DEBUG'] ?? 'false')) === 'true';
+$debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 
 $app->addErrorMiddleware($debug, $debug, $debug);
 

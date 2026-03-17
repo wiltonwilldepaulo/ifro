@@ -1,5 +1,46 @@
 <?php
 
-$app = require __DIR__ . '/../app/bootstrap.php';
+require __DIR__ . '/vendor/autoload.php';
 
-$app->run();
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+return
+    [
+        'paths' => [
+            'migrations' => '%%PHINX_CONFIG_DIR%%/App/Database/Migration',
+            'seeds' => '%%PHINX_CONFIG_DIR%%/App/Database/Seed'
+        ],
+        'environments' => [
+            'default_migration_table' => 'phinxlog',
+            'default_environment' => 'development',
+            'production' => [
+                'adapter' => $_ENV['DB_CONNECTION'],
+                'host'    => $_ENV['DB_HOST'],
+                'name'    => $_ENV['DB_NAME'],
+                'user'    => $_ENV['DB_USER'],
+                'pass'    => $_ENV['DB_PASSWORD'],
+                'port'    => $_ENV['DB_PORT'],
+                'charset' => 'utf8',
+            ],
+            'development' => [
+                'adapter' => $_ENV['DB_CONNECTION'],
+                'host'    => $_ENV['DB_HOST'],
+                'name'    => $_ENV['DB_NAME'],
+                'user'    => $_ENV['DB_USER'],
+                'pass'    => $_ENV['DB_PASSWORD'],
+                'port'    => $_ENV['DB_PORT'],
+                'charset' => 'utf8',
+            ],
+            'testing' => [
+                'adapter' => $_ENV['DB_CONNECTION'],
+                'host'    => $_ENV['DB_HOST'],
+                'name'    => $_ENV['DB_NAME'],
+                'user'    => $_ENV['DB_USER'],
+                'pass'    => $_ENV['DB_PASSWORD'],
+                'port'    => $_ENV['DB_PORT'],
+                'charset' => 'utf8',
+            ]
+        ],
+        'version_order' => 'creation'
+    ];
