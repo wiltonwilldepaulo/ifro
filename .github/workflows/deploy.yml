@@ -158,7 +158,7 @@ jobs:
 
     environment:
       name: production
-      url: "http://${{ secrets.SERVER_HOST }}"
+      url: "http://${{ vars.SERVER_HOST }}"
 
     steps:
       - name: "Checkout"
