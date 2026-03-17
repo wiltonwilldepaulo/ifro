@@ -4,8 +4,8 @@ parameters:
         - App
     phpVersion: 80500
     tmpDir: storage/phpstan
-    scanFiles:
-        - App/helpers/settings.php (?)
+    bootstrapFiles:
+        - %currentWorkingDirectory%/phpstan-bootstrap.php
     excludePaths:
         - vendor
         - App/routes (?)
