@@ -9,24 +9,17 @@ on:
       - main
 
 env:
-  SERVER_HOST: "82.25.74.36"
-  SERVER_USER: "root"
-  DEPLOY_PATH: "/home/ifro"
   PHP_VERSION: "8.5"
 
-# ─────────────────────────────────────────────
-# Garante que apenas 1 deploy roda por vez.
-# Se um novo push chegar enquanto o anterior
-# ainda está rodando, o anterior é cancelado.
-# ─────────────────────────────────────────────
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: pipeline-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
 
   # ═══════════════════════════════════════════
-  # JOB 1: QUALIDADE DE CÓDIGO (PHPStan)
+  # JOB 1: ANÁLISE ESTÁTICA (PHPStan)
+  # Roda em PR e em push na main
   # ═══════════════════════════════════════════
   code-quality:
     name: "Análise estática (PHPStan)"
@@ -58,38 +51,46 @@ jobs:
         run: vendor/bin/phpstan analyse --error-format=github
 
   # ═══════════════════════════════════════════
-  # JOB 2: TESTES AUTOMATIZADOS
+  # JOB 2: TESTES AUTOMATIZADOS (Pest)
+  # Roda em PR e em push na main
+  # Depende do JOB 1 — se PHPStan falhar,
+  # os testes nem iniciam
   # ═══════════════════════════════════════════
   tests:
     name: "Testes (${{ matrix.suite }})"
     runs-on: ubuntu-latest
     needs: code-quality
 
-    # ─── PostgreSQL como service container ───
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: ${{ vars.DB_NAME_TEST || 'test_db' }}
+          POSTGRES_USER: ${{ vars.DB_USER_TEST || 'test_user' }}
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD_TEST || 'test_password' }}
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U test_user -d test_db"
+          --health-cmd="pg_isready"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
 
-    # ─── Rodar cada suite de teste em paralelo ───
     strategy:
       fail-fast: true
       matrix:
         suite:
+          - architecture
           - unit
           - feature
           - integration
-          - architecture
+
+    env:
+      DB_HOST: "127.0.0.1"
+      DB_PORT: "5432"
+      DB_NAME: ${{ vars.DB_NAME_TEST || 'test_db' }}
+      DB_USER: ${{ vars.DB_USER_TEST || 'test_user' }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD_TEST || 'test_password' }}
 
     steps:
       - name: "Checkout"
@@ -100,7 +101,7 @@ jobs:
         with:
           php-version: ${{ env.PHP_VERSION }}
           extensions: pdo_pgsql, pgsql, mbstring, zip, gd, intl, bcmath, curl
-          coverage: xdebug
+          coverage: pcov
           tools: composer:v2
 
       - name: "Cache do Composer"
@@ -115,25 +116,18 @@ jobs:
 
       - name: "Preparar .env de teste"
         run: |
-          cp .env .env.backup 2>/dev/null || true
-          cat > .env.testing << 'EOF'
+          cat > .env << EOF
           APP_ENV=testing
           APP_DEBUG=true
-          DB_HOST=127.0.0.1
-          DB_PORT=5432
-          DB_NAME=test_db
-          DB_USER=test_user
-          DB_PASSWORD=test_password
+          DB_HOST=${DB_HOST}
+          DB_PORT=${DB_PORT}
+          DB_NAME=${DB_NAME}
+          DB_USER=${DB_USER}
+          DB_PASSWORD=${DB_PASSWORD}
           EOF
 
       - name: "Executar migrations (Phinx)"
         run: vendor/bin/phinx migrate -e testing
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 5432
-          DB_NAME: development_db
-          DB_USER: ifro
-          DB_PASSWORD: ifro
 
       - name: "Executar testes — ${{ matrix.suite }}"
         run: |
@@ -142,12 +136,6 @@ jobs:
             --colors=always \
             --log-junit=reports/junit-${{ matrix.suite }}.xml \
             --coverage-clover=reports/coverage-${{ matrix.suite }}.xml
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 5432
-          DB_NAME: development_db
-          DB_USER: ifro
-          DB_PASSWORD: ifro
 
       - name: "Upload relatório de testes"
         if: always()
@@ -158,7 +146,9 @@ jobs:
           retention-days: 7
 
   # ═══════════════════════════════════════════
-  # JOB 3: DEPLOY (só roda se TUDO passar)
+  # JOB 3: DEPLOY (só roda em push na main
+  # e somente se JOB 1 + JOB 2 passarem)
+  # Em Pull Request este job é ignorado
   # ═══════════════════════════════════════════
   deploy:
     name: "Deploy para VPS"
@@ -168,7 +158,7 @@ jobs:
 
     environment:
       name: production
-      url: "http://${{ env.SERVER_HOST }}"
+      url: "http://${{ secrets.SERVER_HOST }}"
 
     steps:
       - name: "Checkout"
@@ -177,41 +167,36 @@ jobs:
       - name: "Copiar arquivos para VPS"
         uses: appleboy/scp-action@v1
         with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: "."
-          target: ${{ env.DEPLOY_PATH }}
+          target: ${{ vars.DEPLOY_PATH || '/home/ifro' }}
           overwrite: true
 
       - name: "Build e restart Docker"
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script_stop: true
           script: |
             set -e
-            cd ${{ env.DEPLOY_PATH }}
+            cd ${{ vars.DEPLOY_PATH || '/home/ifro' }}
 
-            # Corrigir line endings (substitui dos2unix)
             find . -type f \( -name "*.sh" -o -name "*.conf" -o -name "*.yml" -o -name "*.ini" -o -name "Dockerfile*" \) \
               -exec sed -i 's/\r$//' {} + 2>/dev/null || true
 
-            # Build das imagens Docker
             echo "══ Build das imagens ══"
             docker compose build --pull --quiet
 
-            # Parar containers antigos
             echo "══ Parando containers antigos ══"
             docker compose down --timeout 30 2>/dev/null || true
 
-            # Subir novos containers
             echo "══ Subindo containers ══"
             docker compose up -d --remove-orphans
 
-            # Aguardar containers saudáveis
             echo "══ Aguardando containers ══"
             RETRIES=0
             until docker compose exec -T php php -v &>/dev/null; do
@@ -224,7 +209,6 @@ jobs:
               sleep 1
             done
 
-            # Instalar dependências de produção
             echo "══ Composer install ══"
             docker compose exec -T php composer install \
               --no-dev \
@@ -232,7 +216,6 @@ jobs:
               --no-interaction \
               --working-dir=/var/www/html
 
-            # Executar migrations de produção (Phinx)
             echo "══ Migrations ══"
             docker compose exec -T php vendor/bin/phinx migrate -e production
 
@@ -242,15 +225,14 @@ jobs:
       - name: "Health check"
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ env.SERVER_HOST }}
-          username: ${{ env.SERVER_USER }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             set -e
             sleep 8
-            cd ${{ env.DEPLOY_PATH }}
+            cd ${{ vars.DEPLOY_PATH || '/home/ifro' }}
 
-            # Verificar containers
             RUNNING=$(docker compose ps --status running --format json | wc -l)
             echo "Containers rodando: $RUNNING"
 
@@ -261,7 +243,6 @@ jobs:
               exit 1
             fi
 
-            # Teste HTTP
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost || echo "000")
             echo "HTTP status: $HTTP_CODE"
 

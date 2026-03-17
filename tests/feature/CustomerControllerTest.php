@@ -16,8 +16,8 @@ beforeEach(function () {
 # Função auxiliar que cria uma requisição POST com body simulado
 function createPostRequest(array $body): \Psr\Http\Message\ServerRequestInterface
 {
-    $request = (new RequestFactory())->createRequest('POST', '/cliente');
-    $stream = (new StreamFactory())->createStream(json_encode($body));
+    $request = (new RequestFactory())->createRequest('POST', '/cliente/update');
+
     return $request
         ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
         ->withParsedBody($body);

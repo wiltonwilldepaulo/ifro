@@ -2,19 +2,21 @@
 
 declare(strict_types=1);
 
-final class CustomerFactory
-{
-    public function __construct(
-        private readonly Generator $faker
-    ) {}
+// Dentro de um teste em tests/Integration ou tests/Feature
+test('insere customer com dados da factory', function () {
+    $faker = Faker\Factory::create('pt_BR');
 
-    public function make(array $dados = []): Customer
-    {
-        return new Customer(
-            nome: $dados['nome'] ?? $this->faker->name(),
-            cpf: $dados['cpf']  ?? $this->faker->cpf(false),
-            matricula: $dados['mat']  ?? $this->faker->numerify('2025######'),
-            email: $dados['email'] ?? $this->faker->safeEmail(),
-        );
-    }
-}
+    $dados = [
+        'nome_fantasia'       => $faker->company(),
+        'sobrenome_razao'     => $faker->name(),
+        'cpf_cnpj'            => $faker->cpf(),
+        'inscricao_estadual'  => $faker->numerify('#########'),
+        'nascimento_fundacao' => $faker->date('Y-m-d'),
+        'ativo'               => true,
+    ];
+
+    $inserido = App\Database\Builder\InsertQuery::insert('customer')
+        ->save($dados);
+
+    expect($inserido)->toBeTrue();
+});
